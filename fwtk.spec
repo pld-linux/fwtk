@@ -69,10 +69,3 @@ rm -rf $RPM_BUILD_ROOT
 %attr(755,root,root) %{_sbindir}/*
 %attr(644,root,root) %{_mandir}/man[358]/*
 %config(noreplace) %verify(not size mtime md5) %{_sysconfdir}/*
-
-%changelog
-* Thu Jul 08 1999 PLD Team <pld-list@pld.org.pl>
-
-$Log: fwtk.spec,v $
-Revision 1.1  1999-07-10 16:33:59  misiek
-new spec
