@@ -54,7 +54,7 @@ cp fwtk/doc/man/*.5 $RPM_BUILD_ROOT%{_mandir}/man5/
 cp fwtk/doc/man/*.8 $RPM_BUILD_ROOT%{_mandir}/man8/
 
 install %{SOURCE2} $RPM_BUILD_ROOT%{_sbindir}
-gzip -d $RPM_BUILD_ROOT%{_sbindir}/*.gz
+gzip -9nf $RPM_BUILD_ROOT%{_sbindir}/*.gz
 
 strip $RPM_BUILD_ROOT%{_sbindir}/* || :
 rm -f config/Makefile
@@ -64,7 +64,7 @@ gzip -9nf CHANGES LICENSE README fwtk/doc/*.* config/* $RPM_BUILD_ROOT%{_mandir}
 rm -rf $RPM_BUILD_ROOT
 
 %files
-%defattr(640,root,root,755)
+%defattr(644,root,root,755)
 %attr(644,root,root) %doc {CHANGES,LICENSE,README}.gz fwtk/doc/*.* config/*
 %attr(755,root,root) %{_sbindir}/*
 %attr(644,root,root) %{_mandir}/man[358]/*
