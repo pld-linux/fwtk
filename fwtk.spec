@@ -3,7 +3,7 @@ Summary(pl):	TIS FireWall ToolKit
 Name:		fwtk
 Version:	2.1
 Release:	1
-Copyright:	see LICENSE file (redistribution restricted)
+License:	see LICENSE file (redistribution restricted)
 Group:		Networking/Daemons
 Group(de):	Netzwerkwesen/Server
 Group(pl):	Sieciowe/Serwery
@@ -23,10 +23,10 @@ BuildRoot:	%{tmpdir}/%{name}-%{version}-root-%(id -u -n)
 %define		_sysconfdir /etc/%{name}
 
 %description
-Firewall Toolkit
+Firewall Toolkit.
 
 %description -l pl
-Firewall Toolkit - narzêdzie do tworzenia firewalli
+Firewall Toolkit - narzêdzie do tworzenia firewalli.
 
 %prep
 %setup -q -n %{name}
@@ -40,7 +40,7 @@ Firewall Toolkit - narzêdzie do tworzenia firewalli
 cp -f Makefile.config.linux Makefile.config
 
 %build
-RPM_OPT="%{rpmcflags}" make
+RPM_OPT="%{rpmcflags}" %{__make}
 
 %install
 rm -rf $RPM_BUILD_ROOT
@@ -49,11 +49,11 @@ install -d $RPM_BUILD_ROOT{%{_sysconfdir},%{_mandir}/man{3,5,8}}
 %{__make} install \
 	DEST=$RPM_BUILD_ROOT%{_sbindir}
 
-mv -f $RPM_BUILD_ROOT%{_sbindir}/netperm-table $RPM_BUILD_ROOT%{_sysconfdir}/
+mv -f $RPM_BUILD_ROOT%{_sbindir}/netperm-table $RPM_BUILD_ROOT%{_sysconfdir}
 
-install fwtk/doc/man/*.3 $RPM_BUILD_ROOT%{_mandir}/man3/
-install fwtk/doc/man/*.5 $RPM_BUILD_ROOT%{_mandir}/man5/
-install fwtk/doc/man/*.8 $RPM_BUILD_ROOT%{_mandir}/man8/
+install fwtk/doc/man/*.3 $RPM_BUILD_ROOT%{_mandir}/man3
+install fwtk/doc/man/*.5 $RPM_BUILD_ROOT%{_mandir}/man5
+install fwtk/doc/man/*.8 $RPM_BUILD_ROOT%{_mandir}/man8
 
 install %{SOURCE2} $RPM_BUILD_ROOT%{_sbindir}
 gunzip $RPM_BUILD_ROOT%{_sbindir}/*.gz
