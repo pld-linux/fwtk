@@ -17,7 +17,7 @@ Patch3:		fwtk-massfix.patch
 Patch4:		fwtk-ftp-plugin.patch
 Patch5:		fwtk-config.patch
 URL:		http://www.fwtk.org/
-BuildRoot:      /tmp/%{name}-%{version}-root
+BuildRoot:	%{tmpdir}/%{name}-%{version}-root-%(id -u -n)
 
 %define		_sysconfdir /etc/%{name}
 
