@@ -9,6 +9,7 @@ Group:		Networking/Daemons
 Source0:	%{name}%{version}.tar.Z
 Source1:	%{name}-doc-only.tar.Z
 Source2:	http://www.fwtk.org/fwtk/patches/%{name}-summ.pl.gz
+# Source2-md5:	6944963ae47ee29864d3ffd8405b8079
 Patch0:		%{name}2.1-ipv6-19990423-PLD.patch
 Patch1:		%{name}-ndbm.patch
 Patch2:		%{name}-linux.patch
