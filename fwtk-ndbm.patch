@@ -1,0 +1,36 @@
+diff -urN fwtk.orig/auth/authdump.c fwtk/auth/authdump.c
+--- fwtk.orig/auth/authdump.c	Fri Jul  9 11:44:25 1999
++++ fwtk/auth/authdump.c	Fri Jul  9 11:45:34 1999
+@@ -13,7 +13,7 @@
+ #include	<stdio.h>
+ #include	<sys/types.h>
+ #include	<sys/file.h>
+-#include	<ndbm.h>
++#include	<db1/ndbm.h>
+ #include	<syslog.h>
+ 
+ #include	"firewall.h"
+diff -urN fwtk.orig/auth/authload.c fwtk/auth/authload.c
+--- fwtk.orig/auth/authload.c	Fri Jul  9 11:44:25 1999
++++ fwtk/auth/authload.c	Fri Jul  9 11:45:12 1999
+@@ -13,7 +13,7 @@
+ #include	<stdio.h>
+ #include	<sys/types.h>
+ #include	<sys/file.h>
+-#include	<ndbm.h>
++#include	<db1/ndbm.h>
+ #include	<syslog.h>
+ 
+ #include	"firewall.h"
+diff -urN fwtk.orig/auth/db.c fwtk/auth/db.c
+--- fwtk.orig/auth/db.c	Fri Jul  9 11:44:25 1999
++++ fwtk/auth/db.c	Fri Jul  9 11:45:22 1999
+@@ -13,7 +13,7 @@
+ #include	<sys/types.h>
+ #include	<sys/file.h>
+ #include	<fcntl.h>
+-#include	<ndbm.h>
++#include	<db1/ndbm.h>
+ #include	<syslog.h>
+ 
+ #include	"firewall.h"

@@ -1,0 +1,82 @@
+diff -urN fwtk.orig/ftp-gw/ftp-gw.c fwtk/ftp-gw/ftp-gw.c
+--- fwtk.orig/ftp-gw/ftp-gw.c	Fri Jul  9 12:24:28 1999
++++ fwtk/ftp-gw/ftp-gw.c	Fri Jul  9 12:29:46 1999
+@@ -57,6 +58,7 @@
+ 
+ static	Cfg			*confp;
+ static	char			**validests = (char **)0;
++static  char                    *plugdest = (char *)0;
+ static	int			blockinput = 0;
+ static	int			blockoutput = 0;
+ 
+@@ -519,6 +521,8 @@
+ {
+ 	int	dests = 0;
+ 
++	if(plugdest != (char *)0) {
++		syslog(LLEV,"fwtkcfgerr: config line %d: cannot specify both -plug-to and -dest",c);	    } else {
+ 	if(validests == (char **)0)
+ 		validests = (char **)malloc(sizeof(char *) * 2);
+ 	else {
+@@ -530,10 +534,31 @@
+ 		return;
+ 	validests[dests] = v;
+ 	validests[dests + 1] = (char *)0;
++ }
+ }
+ 
+-
+-
++static  void
++accept_setplug(v,c)
++char    *v;
++int     c;
++{
++  if(plugdest == (char *)0) {
++    if(validests == (char **)0) {
++      if(gethostbyname(v) == (struct hostent *)0) {
++        syslog(LLEV,"fwtkcfgerr: config line %d: invalid -plug-to destination: %.100s",c,v);
++      }
++      else {
++        plugdest = v;
++      }
++    }
++    else {
++      syslog(LLEV,"fwtkcfgerr: config line %d: cannot specify both -plug-to and -dest",c);
++    }
++  }
++  else {
++    syslog(LLEV,"fwtkcfgerr: config line %d: cannot specify multiple -plug-to destinations",c);
++  }
++}
+ 
+ acceptrule(c)
+ Cfg	*c;
+@@ -583,6 +608,8 @@
+ 			op = accept_setdeny;
+ 		if(!strcmp(c->argv[x],"-dest"))
+ 			op = accept_setdest;
++		if(!strcmp(c->argv[x],"-plug-to"))
++			op = accept_setplug;
+ 		if(op == 0) {
+ 			syslog(LLEV,"fwtkcfgerr: bad option line %d: %.100s",c->ln,c->argv[x]);
+ 			return(1);
+@@ -640,6 +667,10 @@
+ 	}
+ 
+ 
++	if(plugdest != (char *)0) {
++	  dest = plugdest;
++	  user = av[1];
++	} else {
+ 	if((p = rindex(av[1],'@')) != (char *)0) {
+ 		*p++ = '\0';
+ 		dest = p;
+@@ -651,6 +682,7 @@
+ 			dest = av[1];
+ 		} else
+ 			return(sayn(0,noad,sizeof(noad)-1));
++	}
+ 	}
+ 
+ 	if(*dest == '\0')

@@ -1,0 +1,1580 @@
+diff -urN fwtk.orig/Makefile.config fwtk/Makefile.config
+--- fwtk.orig/Makefile.config	Wed Mar  5 05:17:46 1997
++++ fwtk/Makefile.config	Sat Jul 10 23:16:57 1999
+@@ -24,7 +24,7 @@
+ 
+ # Defines for your operating system
+ #
+-DEFINES=
++DEFINES=-DINET6
+ #DEFINES=-DSYSV -DSOLARIS
+ 
+ # Options for your compiler (eg, "-g" for debugging, "-O" for
+@@ -53,7 +53,7 @@
+ 
+ # Names of any auxiliary libraries your system may require (e.g., -lsocket)
+ # If you want to link against a resolver library, specify it here.
+-AUXLIB=
++AUXLIB= -L/usr/local/v6/lib -linet6
+ #AUXLIB= -lsocket
+ #AUXLIB= -lresolv
+ # For Solaris:
+diff -urN fwtk.orig/Makefile.config.linux fwtk/Makefile.config.linux
+--- fwtk.orig/Makefile.config.linux	Sat Jul 10 23:15:57 1999
++++ fwtk/Makefile.config.linux	Sat Jul 10 23:16:57 1999
+@@ -24,7 +24,7 @@
+ 
+ # Defines for your operating system
+ #
+-DEFINES=-DLINUX
++DEFINES=-DLINUX -DINET6
+ #DEFINES=-DSYSV -DSOLARIS
+ 
+ # Options for your compiler (eg, "-g" for debugging, "-O" for
+@@ -109,4 +109,4 @@
+ #XINCLUDE=/usr/local/X11R5/include
+ 
+ # Objects to include in libfwall for SYSV
+-SYSVOBJ= signal.o
++#SYSVOBJ= signal.o
+diff -urN fwtk.orig/ftp-gw/ftp-gw.c fwtk/ftp-gw/ftp-gw.c
+--- fwtk.orig/ftp-gw/ftp-gw.c	Sat Jul 10 23:15:57 1999
++++ fwtk/ftp-gw/ftp-gw.c	Sat Jul 10 23:16:58 1999
+@@ -31,6 +31,9 @@
+ #include	<sys/sockio.h>
+ #endif /* SYSV */
+ #include	<netinet/in.h>
++#ifdef INET6
++#include <netdb.h>
++#endif
+ 
+ #ifndef SYSV
+ extern	char	*rindex();
+@@ -66,7 +69,11 @@
+ static	int			pasvport = -1;
+ static	int			outgoing = -1;	/* fd for outgoing PORT data */
+ static	int			incoming = -1;	/* fd for outgoing PORT data */
++#ifdef INET6
++static	struct sockaddr_in6	clntport;
++#else
+ static	struct sockaddr_in	clntport;
++#endif
+ static	char			**saveresp = (char **)0;
+ static	int			saveresps = 0;
+ static	char			riaddr[512];
+@@ -117,7 +124,9 @@
+ 	int	(*op)();
+ } FtpOp;
+ static	FtpOp	ops[] = {
++#ifndef INET6
+ 	"port",		OP_CONN,			cmd_port,
++#endif
+ 	"user",		OP_AOK|OP_WCON,			cmd_user,
+ 	"retr",		OP_CONN|OP_XTND,		0,
+ 	"stor",		OP_CONN|OP_XTND,		0,
+@@ -146,7 +155,9 @@
+ 	"response",	OP_AOK,				cmd_response,
+ 	"resp",		OP_AOK,				cmd_response,
+ 	"rein",		OP_CONN,			0,
++#ifndef INET6
+ 	"pasv",		OP_CONN,			cmd_pasv,
++#endif
+ 	"type",		OP_CONN,			0,
+ 	"stru",		OP_CONN,			0,
+ 	"mode",		OP_CONN,			0,
+@@ -156,6 +167,12 @@
+ 	"stat",		OP_CONN,	/* overload */	cmd_abor,
+ 	"dele",		OP_CONN|OP_XTND,			0,
+ 	"size",		OP_CONN,			0,
++#ifdef INET6
++	"lprt",		OP_CONN,			cmd_port,
++	"lpsv",		OP_CONN,			cmd_pasv,
++	"eprt",		OP_CONN,			cmd_port,
++	"epsv",		OP_CONN,			cmd_pasv,
++#endif
+ 	0,		0,				0
+ };
+ 
+@@ -1048,8 +1065,14 @@
+ char	*av[];
+ char	*cbuf;
+ {
++#ifdef INET6
++	struct sockaddr_in6	r;
++	struct sockaddr_in6	n;
++	char			*cmd;
++#else
+ 	struct sockaddr_in	r;
+ 	struct sockaddr_in	n;
++#endif
+ 	int			x;
+ 	int			s;
+ 	unsigned char		*k;
+@@ -1062,6 +1085,149 @@
+ 	if(ac < 2)
+ 		return(sayn(0,narg,sizeof(narg)-1));
+ 
++#ifdef INET6
++	/* save port address for callback later */
++	if(strcasecmp(av[0],"LPRT") == 0) {
++		if(lprttoaddr(av[1],&clntport))
++			return(sayn(0,nadr,sizeof(nadr)-1));
++	} else {
++		if(eprttoaddr(av[1],&clntport))
++			return(sayn(0,nadr,sizeof(nadr)-1));
++	}
++
++
++	/* paranoid: check that we are really PORTing to the client */
++	x = sizeof(r);
++	if(getpeername(0,(struct sockaddr *)&r,&x) < 0)
++		return(sayn(0,nprn,sizeof(nprn)-1));
++	if(bcmp((char *)&clntport.sin6_addr,
++		(char *)&r.sin6_addr,sizeof(r.sin6_addr))) {
++		char	xaf[INET6_ADDRSTRLEN], str[INET6_ADDRSTRLEN];
++
++		inet_ntop(AF_INET6,&clntport.sin6_addr, xaf, sizeof xaf);
++		sprintf(buf,"521 %s %s mismatch %s",av[0],
++			inet_ntop(AF_INET6,&r.sin6_addr, str,sizeof str),xaf);
++		syslog(LLEV,"521 %s %s mismatch %s",av[0],
++			inet_ntop(AF_INET6,&r.sin6_addr, str,sizeof str),xaf);
++		return(say(0,buf));
++	}
++
++
++	x = sizeof(r);
++	if(getpeername(rfd,(struct sockaddr *)&r,&x) < 0)
++		return(sayn(0,nprn,sizeof(nprn)-1));
++	cmd = (r.sin6_family == AF_INET6) ? av[0] : "PORT";
++
++
++	/* ok, now build and bind a socket */
++	if(pasvport != -1)
++		close(pasvport);
++	pasvport = -1;
++	if(boundport != -1)
++		close(boundport);
++	if((boundport = socket(r.sin6_family,SOCK_STREAM,0)) < 0) {
++	    sprintf(buf,"521 %s socket: %s",cmd,strerror(errno));
++		return(say(0,buf));
++	}
++
++	if(r.sin6_family == AF_INET6) {
++		/* learn enough about the socket to send the LPRT */
++		bzero((char *)&r, sizeof(r));
++		r.sin6_family = AF_INET6;
++		x = sizeof(n);
++		if (getsockname(rfd,(struct sockaddr *)&n,&x) < 0) {
++			sprintf(buf,"521 %s getsockname: %s",av[0],
++				strerror(errno));
++			return(say(0,buf));
++		}
++		bcopy((char *)&n.sin6_addr,(char *)&r.sin6_addr,
++		      sizeof(n.sin6_addr));
++		r.sin6_port = 0;
++
++		if(bind(boundport,(struct sockaddr *)&r,sizeof(r))) {
++			sprintf(buf,"521 %s bind: %s",av[0],strerror(errno));
++			return(say(0,buf));
++		}
++		if(listen(boundport,1) < 0) {
++			sprintf(buf,"521 %s listen: %s",av[0],strerror(errno));
++			return(say(0,buf));
++		}
++
++		x = sizeof(n);
++		if(getsockname(boundport,(struct sockaddr *)&n,&x) < 0) {
++			sprintf(buf,"521 %s getsockname: %s",av[0],
++				strerror(errno));
++			return(say(0,buf));
++		}
++		r.sin6_port = n.sin6_port;
++
++
++		/* encode and send over our port to the remote server */
++		if(strcasecmp(av[0],"LPRT") == 0) {
++			k = (unsigned char *)&(r.sin6_addr);
++			l = (unsigned char *)&(r.sin6_port);
++#define UC(c)   (((int)c) & 0xff)
++			sprintf(buf,
++				"LPRT %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r\n",
++				6, 16,
++				UC(k[0]),  UC(k[1]),  UC(k[2]),  UC(k[3]), 
++				UC(k[4]),  UC(k[5]),  UC(k[6]),  UC(k[7]), 
++				UC(k[8]),  UC(k[9]),  UC(k[10]), UC(k[11]), 
++				UC(k[12]), UC(k[13]), UC(k[14]), UC(k[15]), 
++				2, UC(l[0]), UC(l[1]));
++		} else {
++			char str[INET6_ADDRSTRLEN];
++			int af = 2;
++
++			sprintf(buf,"EPRT |%d|%s|%d|\r\n", af,
++				inet_ntop(AF_INET6, &r.sin6_addr, str,
++					  sizeof str),
++				ntohs(r.sin6_port));
++		}
++	} else {
++		struct sockaddr_in	r4;
++		struct sockaddr_in	n4;
++
++		/* learn enough about the socket to send the PORT */
++		bzero((char *)&r4, sizeof(r4));
++		r4.sin_family = AF_INET;
++		x = sizeof(n4);
++		if (getsockname(rfd,(struct sockaddr *)&n4,&x) < 0) {
++			sprintf(buf,"521 PORT getsockname: %s",
++				strerror(errno));
++			return(say(0,buf));
++		}
++		bcopy((char *)&n4.sin_addr,(char *)&r4.sin_addr,
++		      sizeof(n4.sin_addr));
++		r4.sin_port = 0;
++
++		if(bind(boundport,(struct sockaddr *)&r4,sizeof(r4))) {
++			sprintf(buf,"521 PORT bind: %s",strerror(errno));
++			return(say(0,buf));
++		}
++		if(listen(boundport,1) < 0) {
++			sprintf(buf,"521 PORT listen: %s",strerror(errno));
++			return(say(0,buf));
++		}
++
++		x = sizeof(n4);
++		if(getsockname(boundport,(struct sockaddr *)&n4,&x) < 0) {
++			sprintf(buf,"521 PORT getsockname: %s",
++				strerror(errno));
++			return(say(0,buf));
++		}
++		r4.sin_port = n4.sin_port;
++
++
++		/* encode and send over our port to the remote server */
++		k = (unsigned char *)&(r4.sin_addr);
++		l = (unsigned char *)&(r4.sin_port);
++#define UC(c)   (((int)c) & 0xff)
++		sprintf(buf,"PORT %d,%d,%d,%d,%d,%d\r\n",
++			UC(k[0]),UC(k[1]),UC(k[2]),
++			UC(k[3]),UC(l[0]),UC(l[1]));
++	}
++#else /* INET6 */
+ 	/* save port address for callback later */
+ 	if(porttoaddr(av[1],&clntport))
+ 		return(sayn(0,nadr,sizeof(nadr)-1));
+@@ -1126,6 +1292,7 @@
+ #define UC(c)   (((int)c) & 0xff)
+ 	sprintf(buf,"PORT %d,%d,%d,%d,%d,%d\r\n",UC(k[0]),UC(k[1]),UC(k[2]),
+ 		UC(k[3]),UC(l[0]),UC(l[1]));
++#endif /* INET6 */
+ 	s = strlen(buf);
+ 	if (net_send(rfd, buf, s, 0) != s)
+ 		return 1;
+@@ -1139,8 +1306,14 @@
+ char	*av[];
+ char	*cbuf;
+ {
++#ifdef INET6
++	struct sockaddr_in6	r;
++	struct sockaddr_in6	n;
++	char			*cmd;
++#else
+ 	struct sockaddr_in	r;
+ 	struct sockaddr_in	n;
++#endif
+ 	int			x;
+ 	unsigned char		*k;
+ 	unsigned char		*l;
+@@ -1153,6 +1326,125 @@
+ 	boundport = -1;
+ 	if(pasvport != -1)
+ 		close(pasvport);
++#ifdef INET6
++	if((pasvport = socket(AF_INET6,SOCK_STREAM,0)) < 0) {
++		sprintf(buf,"521 %s socket: %s",av[0],strerror(errno));
++		return(say(0,buf));
++	}
++
++	/* learn enough about the socket to send the LPSV reply */
++	bzero((char *)&r, sizeof(r));
++	r.sin6_family = AF_INET6;
++	x = sizeof(n);
++	if (getsockname(0,(struct sockaddr *)&n,&x) < 0) {
++		sprintf(buf,"521 %s getsockname: %s",av[0],strerror(errno));
++		return(say(0,buf));
++	}
++	bcopy((char *)&n.sin6_addr,(char *)&r.sin6_addr,sizeof(n.sin6_addr));
++	r.sin6_port = 0;
++	if(bind(pasvport,(struct sockaddr *)&r,sizeof(r))) {
++		sprintf(buf,"521 %s bind: %s",av[0],strerror(errno));
++		return(say(0,buf));
++	}
++	if(listen(pasvport,1) < 0) {
++		sprintf(buf,"521 %s listen: %s",av[0],strerror(errno));
++		return(say(0,buf));
++	}
++
++	x = sizeof(n);
++	if(getsockname(pasvport,(struct sockaddr *)&n,&x) < 0) {
++		sprintf(buf,"521 %s getsockname: %s",av[0],strerror(errno));
++		return(say(0,buf));
++	}
++	r.sin6_port = n.sin6_port;
++
++
++	/* encode and send over our port to the remote server */
++	if (strcasecmp(av[0], "LPSV") == 0) {
++		k = (unsigned char *)&(r.sin6_addr);
++		l = (unsigned char *)&(r.sin6_port);
++#define UC(c)   (((int)c) & 0xff)
++		sprintf(buf,
++			"228 Entering Long Passive Mode (%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d)\r\n",
++			6, 16,
++			UC(k[0]),  UC(k[1]),  UC(k[2]),  UC(k[3]), 
++			UC(k[4]),  UC(k[5]),  UC(k[6]),  UC(k[7]), 
++			UC(k[8]),  UC(k[9]),  UC(k[10]), UC(k[11]), 
++			UC(k[12]), UC(k[13]), UC(k[14]), UC(k[15]), 
++			2, UC(l[0]), UC(l[1]));
++		cmd = "LPRT";
++	} else {
++		sprintf(buf,"229 Entering Extended Passive Mode (|||%d|)\r\n",
++			ntohs(r.sin6_port));
++		cmd = "EPRT";
++	}
++
++	/* ok, now build and bind a socket */
++	if(boundport != -1)
++		close(boundport);
++	if((boundport = socket(AF_INET6,SOCK_STREAM,0)) < 0) {
++		sprintf(buf,"521 %s socket: %s",cmd,strerror(errno));
++		goto bad;
++	}
++
++	/* learn enough about the socket to send the LPRT */
++	bzero((char *)&r, sizeof(r));
++	r.sin6_family = AF_INET6;
++	bzero((char *)&r.sin6_addr,sizeof(r.sin6_addr));
++	x = sizeof(n);
++	if (getsockname(rfd,(struct sockaddr *)&n,&x) < 0) {
++		sprintf(buf,"521 %s getsockname: %s",cmd,strerror(errno));
++		goto bad;
++	}
++	bcopy((char *)&n.sin6_addr,(char *)&r.sin6_addr,sizeof(n.sin6_addr));
++	r.sin6_port = 0;
++	if(bind(boundport,(struct sockaddr *)&r, sizeof(r))) {
++		sprintf(buf, "521 %s bind: %s",cmd,strerror(errno));
++		goto bad;
++	}
++	if(listen(boundport, 1) < 0) {
++		sprintf(buf,"521 %s listen: %s",cmd,strerror(errno));
++		goto bad;
++	}
++
++	x = sizeof(n);
++	if(getsockname(boundport,(struct sockaddr *)&n,&x) < 0) {
++		sprintf(buf,"521 %s getsockname: %s",cmd,strerror(errno));
++		goto bad;
++	}
++	r.sin6_port = n.sin6_port;
++
++	/* encode and send over our port to the remote server */
++	if(strcasecmp(av[0],"LPSV") == 0) {
++		k = (unsigned char *)&(r.sin6_addr);
++		l = (unsigned char *)&(r.sin6_port);
++#define UC(c)	(((int)c) & 0xff)
++		sprintf(bbuf,
++			"LPRT %d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d,%d\r\n",
++			6, 16,
++			UC(k[0]),  UC(k[1]),  UC(k[2]),  UC(k[3]), 
++			UC(k[4]),  UC(k[5]),  UC(k[6]),  UC(k[7]), 
++			UC(k[8]),  UC(k[9]),  UC(k[10]), UC(k[11]), 
++			UC(k[12]), UC(k[13]), UC(k[14]), UC(k[15]), 
++			2, UC(l[0]), UC(l[1]));
++	} else {
++		char str[INET6_ADDRSTRLEN];
++		int af = 2;
++
++		sprintf(bbuf,"EPRT |%d|%s|%d|\r\n", af,
++			inet_ntop(AF_INET6, &r.sin6_addr, str, sizeof str),
++			ntohs(r.sin6_port));
++	}
++/* send the LPSV reponse and the onward LPRT cmd. */
++	syslog(LLEV, "cmd_lpsv(): %s", buf);
++	syslog(LLEV, "cmd_lpsv(): %s", bbuf);
++	say(0, buf);
++	x = strlen(bbuf);
++	if (x != net_send(rfd, bbuf, x, 0)) {
++		sprintf(buf, "521 %s send: %s",cmd,strerror(errno));
++		goto bad;
++	}
++#else /* INET6 */
+ 	if((pasvport = socket(AF_INET,SOCK_STREAM,0)) < 0) {
+ 		sprintf(buf,"521 PASV socket: %s",strerror(errno));
+ 		return(say(0,buf));
+@@ -1240,6 +1532,7 @@
+ 		sprintf(buf, "521 PORT send: %s", strerror(errno));
+ 		goto bad;
+ 	}
++#endif /* INET6 */
+ 	return(0);
+ 
+ bad:
+@@ -1350,6 +1643,23 @@
+ 	if (pasvport != -1)
+ 		return 0;       /* incoming handled by PASVcallback */
+ 
++#ifdef INET6
++	if (clntport.sin6_port == 0)
++		goto bomb;
++
++	if((incoming = socket(AF_INET6,SOCK_STREAM,0)) < 0)
++		goto bomb;
++
++	if(connect(incoming,(struct sockaddr *)&clntport,sizeof(clntport)) < 0)
++		goto bomb;
++
++	/* invalidate the port */
++	clntport.sin6_port = 0;
++	return(0);
++
++bomb:
++	clntport.sin6_port = 0;
++#else
+ 	if (clntport.sin_port == 0)
+ 		goto bomb;
+ 
+@@ -1365,6 +1675,7 @@
+ 
+ bomb:
+ 	clntport.sin_port = 0;
++#endif
+ 	close(boundport);
+ 	boundport = -1;
+ 	if(outgoing != -1)
+@@ -1385,7 +1696,11 @@
+ 		goto bomb;
+ 	return(0);
+ bomb:
++#ifdef INET6
++	clntport.sin6_port = 0;
++#else
+ 	clntport.sin_port = 0;
++#endif
+ 	if (boundport != -1)
+ 		close(boundport);
+ 	boundport = -1;
+@@ -1863,6 +2178,80 @@
+ 	return(0);
+ }
+ 
++#ifdef INET6
++lprttoaddr(s,a)
++char			*s;
++struct sockaddr_in6	*a;
++{
++	unsigned char	*c;
++	char		*x;
++	static char	d[] = ",";
++	int		l, i;
++
++	bzero((char *)a,sizeof(struct sockaddr_in6));
++
++	if((x = strtok(s,d)) == (char *)0)		/* AF */
++		return(1);
++
++	/* strip out host bits */
++	if((x = strtok((char *)0,d)) == (char *)0)	/* HAL */
++		return(1);
++	l = atoi(x);
++	c = (unsigned char *)(&(a->sin6_addr));
++	for (i = 0; i < l; ++i) {
++		if((x = strtok((char *)0,d)) == (char *)0)
++			return(1);
++		c[i] = atoi(x);
++	}
++
++	/* now strip out port bits */
++	if((x = strtok((char *)0,d)) == (char *)0)	/* PAL */
++		return(1);
++	l = atoi(x);
++	c = (unsigned char *)(&(a->sin6_port));
++	for (i = 0; i < l; ++i) {
++		if((x = strtok((char *)0,d)) == (char *)0)
++			return(1);
++		c[i] = atoi(x);
++	}
++	a->sin6_family = AF_INET6;
++	return(0);
++}
++
++eprttoaddr(s,a)
++char			*s;
++struct sockaddr_in6	*a;
++{
++	char		*x, *hostp, *portp;
++	static char	d[] = "|";
++	struct addrinfo hints, *res;
++
++	memset((char *)a,0,sizeof(struct sockaddr_in6));
++
++	*d = *s;
++	if((x = strtok(s + 1,d)) == (char *)0)		/* AF */
++		return(1);
++	if(atoi(x) != 2)
++		return(1);
++
++	if((x = strtok((char *)0,d)) == (char *)0)
++		return(1);
++	hostp = x;
++	if((x = strtok((char *)0,d)) == (char *)0)
++		return(1);
++	portp = x;
++	memset(&hints, 0, sizeof(hints));
++	hints.ai_family = AF_UNSPEC;
++	if(getaddrinfo(hostp,portp,&hints,&res))
++		return(1);
++	if (res->ai_next)
++		return(1);
++	memcpy(a,res->ai_addr,res->ai_addrlen);
++
++	return(0);
++}
++#endif
++
+ static int
+ net_send(s, buf, len, flags)
+ int s;
+@@ -1887,10 +2276,27 @@
+ #ifdef	BINDDEBUG
+ debugbind()
+ {
++#ifdef INET6
++	struct	sockaddr_in6	mya;
++#else
+ 	struct	sockaddr_in	mya;
++#endif
+ 	int	x;
+ 	int	nread;
+ 
++#ifdef INET6
++	if((x = socket(AF_INET6,SOCK_STREAM,0)) < 0) {
++		perror("socket");
++		exit(1);
++	}
++	mya.sin6_family = AF_INET6;
++	bzero(&mya.sin6_addr,sizeof(mya.sin6_addr));
++#ifndef	BINDDEBUGPORT
++	mya.sin6_port = htons(FTPPORT);
++#else
++	mya.sin6_port = htons(BINDDEBUGPORT);
++#endif
++#else
+ 	if((x = socket(AF_INET,SOCK_STREAM,0)) < 0) {
+ 		perror("socket");
+ 		exit(1);
+@@ -1901,6 +2307,7 @@
+ 	mya.sin_port = htons(FTPPORT);
+ #else
+ 	mya.sin_port = htons(BINDDEBUGPORT);
++#endif
+ #endif
+ 	if(bind(x,(struct sockaddr *)&mya,sizeof(mya))) {
+ 		perror("bind");
+diff -urN fwtk.orig/http-gw/ftp.c fwtk/http-gw/ftp.c
+--- fwtk.orig/http-gw/ftp.c	Sat Jan 18 21:17:37 1997
++++ fwtk/http-gw/ftp.c	Sat Jul 10 23:16:57 1999
+@@ -268,7 +268,11 @@
+ {	int port, cnt;
+ 	char *p, *q;
+ 	int ftp_control, ftp_listen, ftp_data;
++#ifdef INET6
++	struct sockaddr_in6 serv_addr;
++#else
+ 	struct sockaddr_in serv_addr;
++#endif
+ 	int length = sizeof( serv_addr);
+ 	char ftp_command[MAX_URL_LEN+40];
+ 	char gt[2];
+diff -urN fwtk.orig/http-gw/hmain.c fwtk/http-gw/hmain.c
+--- fwtk.orig/http-gw/hmain.c	Sat Feb  7 00:32:16 1998
++++ fwtk/http-gw/hmain.c	Sat Jul 10 23:16:57 1999
+@@ -170,7 +170,14 @@
+ {
+ 	Cfg		*cf;
+ 	int		x;
++#ifdef INET6
++	static struct sockaddr_in6 serv_addr;
++#ifndef linux
++	int		h_error;
++#endif
++#else
+ static struct sockaddr_in serv_addr;
++#endif
+ 	int		length = sizeof(serv_addr);
+ 
+ 	if( ac == 2 && !strcmp(av[1], "-version")){
+@@ -256,7 +263,16 @@
+ 	if(gethostname(ourname,sizeof(ourname)))
+ 		strcpy(ourname,"unknown");
+ #ifndef NO_GETHOSTBYNAME
++#ifdef INET6
++#ifdef linux
++	ourhe = gethostbyname2(ourname, AF_INET6);
++#else
++	ourhe = getipnodebyname(ourname, AF_INET6, AI_DEFAULT | AI_ALL,
++				&h_error);
++#endif
++#else
+ 	ourhe = gethostbyname ( ourname);
++#endif
+ 	if( NULL != ourhe){
+ 		strcpy(ourname, ourhe->h_name);
+ 	}
+@@ -267,7 +283,11 @@
+ 		syslog(LLEV,"cannot get our port");
+ 		exit(1);
+ 	}
++#ifdef INET6
++	ourport = ntohs(serv_addr.sin6_port);
++#else
+ 	ourport = ntohs(serv_addr.sin_port);
++#endif
+ 
+ 	if(peername(0,rladdr,riaddr,sizeof(riaddr))) {
+ 		syslog(LLEV,"cannot get peer name");
+diff -urN fwtk.orig/http-gw/http-gw.c fwtk/http-gw/http-gw.c
+--- fwtk.orig/http-gw/http-gw.c	Sat Jul 10 23:15:57 1999
++++ fwtk/http-gw/http-gw.c	Sat Jul 10 23:16:57 1999
+@@ -820,12 +820,20 @@
+ {	int x;
+ 	int	reuse = 1;
+ 	struct linger linger;
++#ifdef INET6
++	struct	sockaddr_in6	mya;
++#else
+ 	struct	sockaddr_in	mya;
++#endif
+ 
+ 	(void) signal(SIGALRM, net_timeout);
+ 	(void) alarm(timeout.tv_sec);
+ 
++#ifdef INET6
++	if((x = socket(AF_INET6,SOCK_STREAM,0)) < 0) {
++#else
+ 	if((x = socket(AF_INET,SOCK_STREAM,0)) < 0) {
++#endif
+ 		syslog(LLEV,"Socket failed:%m");
+ 		goto broke;
+ 	}
+@@ -835,9 +843,15 @@
+ 		goto broke;
+ 	}
+ 
++#ifdef INET6
++	mya.sin6_family = AF_INET6;
++	bzero(&mya.sin6_addr,sizeof(mya.sin6_addr));
++	mya.sin6_port = htons(port);
++#else
+ 	mya.sin_family = AF_INET;
+ 	bzero(&mya.sin_addr,sizeof(mya.sin_addr));
+ 	mya.sin_port = htons(port);
++#endif
+ 	if(bind(x,(struct sockaddr *)&mya,sizeof(mya))) {
+ 		syslog(LLEV,"Bind failed: %m");
+ 		goto broke;
+@@ -862,11 +876,19 @@
+ int port_num(sockfd, rfd, haddr)
+ int sockfd, rfd;
+ unsigned char *haddr;
++#ifdef INET6
++{	struct sockaddr_in6 serv_addr;
++	struct sockaddr_in6 data_addr;
++	int length = sizeof(struct sockaddr_in6);
++#else
+ {	struct sockaddr_in serv_addr;
+ 	struct sockaddr_in data_addr;
+ 	int length = sizeof(struct sockaddr_in );
++#endif
+ 	int port, err;
++#ifndef INET6
+ 	unsigned char *addr;
++#endif
+ 	struct ifreq freq;
+ 	char ifname[17];
+ 
+@@ -875,18 +897,27 @@
+ 		return 0;
+ 	}
+ 
++#ifdef INET6
++	length = sizeof(struct sockaddr_in6 );
++#else
+ 	length = sizeof(struct sockaddr_in );
++#endif
+ 	if( (err = getsockname(rfd, (struct sockaddr *)&data_addr, &length))!= 0){
+ 		return 0;
+ 	}
+ 
+ 
++#ifdef INET6
++	port = ntohs(data_addr.sin6_port);
++	memcpy(haddr, &serv_addr.sin6_addr, sizeof(struct in6_addr));
++#else
+ 	port = ntohs(data_addr.sin_port);
+ 	addr = (unsigned char *)&serv_addr.sin_addr;
+ 	haddr[0] = addr[0];
+ 	haddr[1] = addr[1];
+ 	haddr[2] = addr[2];
+ 	haddr[3] = addr[3];
++#endif
+ 	return port;
+ }
+ 
+@@ -958,8 +989,10 @@
+ {	int port;
+ 	char *p, *q;
+ 	int ftp_control, ftp_listen, ftp_data;
++#ifndef INET6
+ 	struct sockaddr_in serv_addr;
+ 	int length = sizeof( serv_addr);
++#endif
+ 
+ 	ftp_control = ftp_listen = ftp_data = -1;
+ 
+@@ -1116,8 +1149,10 @@
+ char *buf, *host;
+ {	int port, n, cnt;
+ 	char *p;
++#ifndef INET6
+ 	struct sockaddr_in serv_addr;
+ 	int length = sizeof( serv_addr);
++#endif
+ 	int saved = sockfd;
+ 	int	flag = 0;
+ 
+@@ -2658,12 +2693,20 @@
+ struct reproxy_rec *rt;
+ {	int plug_fd, plugdata;
+ 	int port, rem_fd;
++#ifdef INET6
++	struct sockaddr_in6 serv_addr;
++#else
+ 	struct sockaddr serv_addr;
++#endif
+ 	int length;
+ 	int cnt;
+ 	char *p, protocol[16];
+ 	struct timeval *tp = NULL;
++#ifdef INET6
++	unsigned char haddr[sizeof(struct in6_addr)];
++#else
+ 	unsigned char haddr[4];
++#endif
+ 	struct reproxy_rec *t = reproxy_list;
+ 
+ 	strcpy(tmp_auth_buf, buf);
+@@ -2745,7 +2788,11 @@
+ 	(void) signal(SIGALRM, net_timeout);
+ 	(void) alarm(timeout.tv_sec);
+ 
++#ifdef INET6
++	length = sizeof(struct sockaddr_in6);
++#else
+ 	length = sizeof(struct sockaddr );
++#endif
+ 	plugdata = accept(plug_fd, (struct sockaddr *)&serv_addr, &length);
+ 	if( plugdata < 0){
+ 		goto broken;
+diff -urN fwtk.orig/http-gw/http-gw.h fwtk/http-gw/http-gw.h
+--- fwtk.orig/http-gw/http-gw.h	Fri Feb  6 01:06:23 1998
++++ fwtk/http-gw/http-gw.h	Sat Jul 10 23:16:57 1999
+@@ -132,7 +132,11 @@
+  = -1
+ #endif
+ ;
++#ifdef INET6
++EXTERN	struct sockaddr_in6	clntport;
++#else
+ EXTERN	struct sockaddr_in	clntport;
++#endif
+ EXTERN	char			riaddr[512];
+ EXTERN	char			rladdr[512];
+ 
+diff -urN fwtk.orig/lib/conn.c fwtk/lib/conn.c
+--- fwtk.orig/lib/conn.c	Sat Jan 18 20:39:40 1997
++++ fwtk/lib/conn.c	Sat Jul 10 23:13:04 1999
+@@ -30,12 +30,35 @@
+ int	priv;
+ char	*rbuf;
+ {
++#ifdef INET6
++	struct	addrinfo	hints, *res;
++	int			fd;
++#else
+ 	struct	sockaddr_in	addr;
+ 	struct	hostent		*hp = 0;
+ 	int			fd;
+ 	char			*p;
+ 	char			**ap;
++#endif
++
++#ifdef INET6
++	memset(&hints, 0, sizeof(hints)) ;
++	hints.ai_family = AF_UNSPEC ;
++	hints.ai_socktype = SOCK_STREAM ;
++	hints.ai_protocol = 0 ;
++	if(getaddrinfo(srv, NULL, &hints, &res) != 0) {
++		return -2 ;
++	}
++
++	((struct sockaddr_in *) res->ai_addr)->sin_port = htons(portnum);
+ 
++	if(priv) {
++		int	lport = IPPORT_RESERVED - 1;
++                fd = rresvport_af(&lport, res->ai_family);
++	} else
++		fd = socket(res->ai_family, res->ai_socktype,
++			    res->ai_protocol);
++#else
+ 	p = srv;
+ 	while(*p != '\0' && (*p == '.' || isdigit(*p)))
+ 		p++;
+@@ -81,19 +104,69 @@
+ 		fd = rresvport(&lport);
+ 	} else
+ 		fd = socket(AF_INET,SOCK_STREAM,0);
+-	
++#endif
++
+ 	if(fd < 0) {
+ 		if(rbuf != (char *)0)
+ 			sprintf(rbuf,"socket: %s",strerror(errno));
+ 		return(-2);
+ 	}
+ 
++#ifdef INET6
++	if(connect(fd, res->ai_addr, res->ai_addrlen) < 0) {
++#else
+ 	if(connect(fd,(struct sockaddr *)&addr,sizeof(addr)) < 0) {
+ 		if (hp && *++ap)
+ 			goto newaddr;
++#endif
+ 		if(rbuf != (char *)0)
+ 			sprintf(rbuf,"connect: %s",strerror(errno));
+ 		return(-3);
+ 	}
+ 	return(fd);
+ }
++
++int
++rresvport_af(port, family)
++        int *port, family;
++{
++        int i, s, len, err;
++        struct sockaddr_storage ss;
++        u_short *sport;
++
++        switch (family) {
++        case AF_INET:
++                len = sizeof(struct sockaddr_in);
++                sport = &((struct sockaddr_in *)&ss)->sin_port;
++                break;
++        case AF_INET6:
++                len = sizeof(struct sockaddr_in6);
++                sport = &((struct sockaddr_in6 *)&ss)->sin6_port;
++                break;
++        default:
++                errno = EAFNOSUPPORT;
++                return -1;
++        }
++        memset(&ss, 0, sizeof(ss));
++        ss.__ss_family = family;
++
++        for (i = 1023; i > 512; i--) {
++                s = socket(family, SOCK_STREAM, 0);
++                if (s == -1)
++                        return -1;
++                *sport = htons(i);
++                err = bind(s, (struct sockaddr *)&ss, len);
++                if (err != -1) {
++                        *port = i;
++                        return s;
++                }
++                if (errno != EADDRINUSE)
++                        return -1;
++                close(s);
++        }
++
++        errno = EAGAIN;
++        return -1;
++}
++
++
+diff -urN fwtk.orig/lib/daemon.c fwtk/lib/daemon.c
+--- fwtk.orig/lib/daemon.c	Fri Feb  6 01:01:34 1998
++++ fwtk/lib/daemon.c	Sat Jul 10 23:16:57 1999
+@@ -90,7 +90,11 @@
+ 
+ int do_daemon( port)
+ int port;
++#ifdef INET6
++{	struct sockaddr_in6 sa;
++#else
+ {	struct sockaddr_in sa;
++#endif
+ 	int sock,sockl;
+ 	pid_t pid;
+ 	int boundok = 1;
+@@ -112,10 +116,17 @@
+ 		if (devnull > 2)
+ 			(void) close(devnull);
+ 	}
++#ifdef INET6
++	sa.sin6_family = AF_INET6;
++	bzero( (char *)&sa.sin6_addr, sizeof(sa.sin6_addr));
++	sa.sin6_port = htons(port);
++	sock = socket(AF_INET6, SOCK_STREAM, 0);
++#else
+ 	sa.sin_family = AF_INET;
+ 	bzero( (char *)&sa.sin_addr, sizeof(sa.sin_addr));
+ 	sa.sin_port = htons(port);
+ 	sock = socket(AF_INET, SOCK_STREAM, 0);
++#endif
+ 	if( sock < 0){
+ 		syslog(LLEV,"Failed to create socket, %m");
+ 		exit(1);
+diff -urN fwtk.orig/lib/hnam.c fwtk/lib/hnam.c
+--- fwtk.orig/lib/hnam.c	Tue Dec 10 19:08:48 1996
++++ fwtk/lib/hnam.c	Sat Jul 10 23:16:57 1999
+@@ -14,6 +14,9 @@
+ #include	<sys/types.h>
+ #include	<sys/socket.h>
+ #include	<netinet/in.h>
++#ifdef INET6
++#include	<arpa/inet.h>
++#endif
+ #include	<netdb.h>
+ #include	<syslog.h>
+ #include	<ctype.h>
+@@ -29,6 +32,15 @@
+ char	*name;
+ {
+ 	struct	hostent		*hp;
++#ifdef INET6
++	static char		str[512];
++	struct	sockaddr_in6	sin6;
++	struct	in6_addr	addr;
++	int			family = AF_INET6;
++#ifndef linux
++	int			h_error;
++#endif
++#endif
+ 	struct	sockaddr_in	sin;
+ 	char			*p;
+ 
+@@ -39,6 +51,42 @@
+ 	if(*p == '\0')
+ 		return(name);
+ 
++#ifdef INET6
++	if (inet_pton(AF_INET6, name, &addr))
++		return(name);
++#ifdef linux
++	if((hp = gethostbyname2(name, AF_INET6)) == (struct hostent *)0) {
++		family = AF_INET;
++		hp = gethostbyname2(name, AF_INET);
++		if(hp == (struct hostent *)0)
++#else
++	hp = getipnodebyname(name, AF_INET6, AI_DEFAULT | AI_ALL, &h_error);
++	if(hp == (struct hostent *)0) {
++		family = AF_INET;
++		hp = getipnodebyname(name, AF_INET, AI_DEFAULT, &h_error);
++		if(hp == (struct hostent *)0)
++#endif
++			return(name);
++	}
++
++	if(family == AF_INET) {
++		if (hp->h_length > sizeof(sin.sin_addr.s_addr)) {
++			syslog(LLEV,"securityalert: invalid host address length (%d) hostname %.128s", hp->h_length, name);
++			name = "invalid";
++			return (name);
++		}
++		bcopy(hp->h_addr,&sin.sin_addr,hp->h_length);
++		return(inet_ntoa(sin.sin_addr));
++	} else {
++		if (hp->h_length > sizeof(sin6.sin6_addr.s6_addr)) {
++			syslog(LLEV,"securityalert: invalid host address length (%d) hostname %.128s", hp->h_length, name);
++			name = "invalid";
++			return (name);
++		}
++		bcopy(hp->h_addr,&sin6.sin6_addr,hp->h_length);
++		return(inet_ntop(AF_INET6, &sin6.sin6_addr, str, sizeof str));
++	}
++#else
+ 	if((hp = gethostbyname(name)) == (struct hostent *)0)
+ 		return(name);
+ 
+@@ -49,4 +97,5 @@
+ 	}
+ 	bcopy(hp->h_addr,&sin.sin_addr,hp->h_length);
+ 	return(inet_ntoa(sin.sin_addr));
++#endif
+ }
+diff -urN fwtk.orig/lib/nama.c fwtk/lib/nama.c
+--- fwtk.orig/lib/nama.c	Wed Apr  2 18:09:53 1997
++++ fwtk/lib/nama.c	Sat Jul 10 23:16:57 1999
+@@ -20,8 +20,12 @@
+ #include	<syslog.h>
+ #include	<ctype.h>
+ 
++#ifdef INET6
++#include	<arpa/inet.h>
++#else
+ extern	char	*inet_ntoa();
+ extern	long	inet_addr();
++#endif
+ 
+ 
+ #include	"firewall.h"
+@@ -237,7 +241,7 @@
+ 	i = 0;
+ 	while(*p && *p != ':' && i < 4){
+ 		p1 = p;
+-		while(*p != '\0' && *p != '.' && *p != ':')p++;
++		while(*p != '\0' && *p != '.' && *p != '/')p++;
+ 		if( *p != '\0'){
+ 			char saved= *p;
+ 			*p = '\0';
+@@ -299,17 +303,80 @@
+ }
+ 
+ 
++#ifdef INET6
++int in6addrmatch(pat, num)
++char *pat, *num;
++{
++	struct in6_addr pataddr, numaddr;
++	u_int32_t mask = 0x0;
++	char *p;
++	int masklen, i = 0;
++
++	if ( (p = strchr(pat, '/')) != NULL ) {
++	    char saved= *p;
++	    *p = '\0';
++	    if ( !inet_pton(AF_INET6, pat, pataddr.s6_addr) )
++		return 0;
++	    *p = saved;
++	    masklen = atoi(++p);
++	}else{
++	    if ( !inet_pton(AF_INET6, pat, pataddr.s6_addr) )
++		return 0;
++	    masklen = 128;
++	}
++
++	if ( !inet_pton(AF_INET6, num, numaddr.s6_addr) )
++	    return 0;
++
++	while ( masklen > 0 ) {
++#ifdef	TESTNAMATCH
++	    fprintf(stderr,"numaddr.s6_addr32[%d] = %08x\n",
++		    i, htonl(numaddr.s6_addr32[i]));
++	    fprintf(stderr,"pataddr.s6_addr32[%d] = %08x\n",
++		    i, htonl(pataddr.s6_addr32[i]));
++#endif
++	    if ( masklen < 32 ) {
++		while ( masklen-- > 0 )
++		    mask |= 0x80000000L >> masklen;
++#ifdef	TESTNAMATCH
++		fprintf(stderr,"mask = %08x\n", mask);
++#endif
++		if ( (htonl(numaddr.s6_addr32[i]) & mask)
++		  != (htonl(pataddr.s6_addr32[i]) & mask) )
++		    return 0;
++		break;
++	    }
++	    if( numaddr.s6_addr32[i] != pataddr.s6_addr32[i] )
++		return 0;
++	    ++i;
++	    masklen -= 32;
++	}
++	return 1;
++}
++#endif
++
++
+ hostmatch(pattern,name)
+ char	*pattern;
+ char	*name;
+ {
+ 	struct	hostent		*hp;
++#ifdef INET6
++	static char		str[512];
++	struct	sockaddr_in6	sin6;
++#endif
+ 	struct	sockaddr_in	sin;
+ 	char			pat[512];
+ 	char			nam[512];
+ 	char			*p;
+ 	int			x;
+ 	int			y;
++#ifdef INET6
++	struct in6_addr		*hp_addr6;
++#ifndef linux
++		int		h_error;
++#endif
++#endif
+ 	struct in_addr		*hp_addr;
+ 	int			eq;
+ 
+@@ -333,6 +400,63 @@
+ 			nam[y] = tolower(nam[y]);
+ 
+ 
++#ifdef INET6
++	/* IPv6 rule doesn't allow `*' */
++	for (p = pat; *p == '*' ; ++p)
++		;
++	if (*p == '\0')
++		return(1);
++
++
++	/* is the pattern numeric IPv6 ? ,pjc: num/masklen? */
++	p = pat;
++	while(*p != '\0' &&
++	    (*p == ':' || isxdigit(*p) || *p == '/'))
++		p++;
++
++
++	if(*p == '\0') {
++		/* match against a numeric IPv6 pattern */
++		/* pjc: or num/plefixlen */
++
++		p = nam;
++		while(*p != '\0' && (*p == ':' || isxdigit(*p)))
++			p++;
++
++		/* all numeric match is easy ! */
++		if(*p == '\0')
++			return(in6addrmatch(pat,nam));
++
++		/* get address and covert to numbers to match on */
++#ifdef linux
++		hp = gethostbyname2(nam, AF_INET6);
++#else
++		hp = getipnodebyname(nam, AF_INET6, AI_DEFAULT, &h_error);
++#endif
++
++		/* unknown host can never match numeric spec */
++		if(hp == (struct hostent *)0)
++			return(0);
++
++		/* match names */
++		eq = 0;
++		while((hp_addr6 = (struct in6_addr *)*hp->h_addr_list++) != (struct in6_addr *)0) {
++			if (hp->h_length > sizeof(sin6.sin6_addr.s6_addr)) {
++				syslog(LLEV,"securityalert: invalid host address length (%d) hostname %.512s", hp->h_length, nam);
++				return(0);
++			}
++			bcopy(hp_addr6,&sin6.sin6_addr,hp->h_length);
++			eq = in6addrmatch(pat, inet_ntop(AF_INET6,
++							 &sin6.sin6_addr,
++							 str, sizeof str));
++			if (eq)
++				return eq;
++		}
++		return 0;
++	}
++#endif
++
++
+ 	/* is the pattern numeric ? ,pjc: num:mask? */
+ 	p = pat;
+ 	while(*p != '\0' &&
+@@ -342,12 +466,20 @@
+ 
+ 	/* match against a text name */
+ 	if(*p != '\0') {
++#ifdef INET6
++		struct in6_addr	f;
++#else
+ 		long		f;
++#endif
+ 		char		*p = nam;
+ 		char		*rev;
+ 
+ 		eq = 0;
++#ifdef INET6
++		while(*p != '\0' && (*p == ':' || *p == '.' || isxdigit(*p)))
++#else
+ 		while(*p != '\0' && (*p == '.' || isdigit(*p)))
++#endif
+ 			p++;
+ 
+ 		/* if the name is also a text name, just match */
+@@ -355,12 +487,25 @@
+ 			return(namatch(pat,nam));
+ 
+ 		/* fooey, it's not, we need to reverse lookup */
++#ifdef INET6
++		if (!inet_pton(AF_INET6, nam, &f)) {
++#else
+ 		if((f = inet_addr(nam)) == (long) -1) {
++#endif
+ 			syslog(LLEV,"fwtkcfgerr: inet_addr, malformed address: %.100s",nam);
+ 			return(0);
+ 		}
+ 
++#ifdef INET6
++#ifdef linux
++		hp = gethostbyaddr((char *)&f, sizeof(f), AF_INET6);
++#else
++		hp = getipnodebyaddr((char *)&f, sizeof(f), AF_INET6,
++				     &h_error);
++#endif
++#else
+ 		hp = gethostbyaddr((char *)&f,sizeof(f),AF_INET);
++#endif
+ 		if(hp == (struct hostent *)0)
+ 			return(namatch(pat,"unknown"));
+ 
+@@ -375,7 +520,16 @@
+ 				nam[y] = tolower(nam[y]);
+ 
+ 		/* cross-check reverse lookup to try to detect DNS spoofs */
++#ifdef INET6
++#ifdef linux
++		hp = gethostbyname2(nam, AF_INET6);
++#else
++		hp = getipnodebyname(nam, AF_INET6, AI_DEFAULT | AI_ALL,
++				     &h_error);
++#endif
++#else
+ 		hp = gethostbyname(nam);
++#endif
+ 		if(hp == (struct hostent *)0)
+ 			return(namatch(pat,"unknown"));
+ 
+@@ -383,11 +537,22 @@
+ 			syslog(LLEV,"securityalert: invalid host address length (%d) hostname %.512s", hp->h_length, nam);
+ 			return(0);
+ 		}
++#ifdef INET6
++		while((hp_addr6 = (struct in6_addr *)*hp->h_addr_list++) != (struct in6_addr *)0) {
++#else
+ 		while((hp_addr = (struct in_addr *)*hp->h_addr_list++) != (struct in_addr *)0) {
++#endif
+ 
++#ifdef INET6
++			if (hp_addr6 && !rev)
++				rev = inet_ntop(AF_INET6, hp_addr6,
++						str, sizeof str);
++			if(bcmp(hp_addr6,&f,hp->h_length) == 0) {
++#else
+ 			if (hp_addr && !rev)
+ 				rev = inet_ntoa(*hp_addr);
+ 			if(bcmp(hp_addr,&f,hp->h_length) == 0) {
++#endif
+ 				eq = 1;
+ 				break;
+ 			}
+@@ -408,6 +573,11 @@
+ 	/* match against a numeric pattern */
+ 	/* pjc: or num:mask */
+ 
++#ifdef notyet
++	if ( nam is V4MAPPED_ADDRESS )
++		convert nam to native IPv4 address
++#endif
++
+ 	p = nam;
+ 	while(*p != '\0' && (*p == '.' || isdigit(*p)))
+ 		p++;
+@@ -417,7 +587,15 @@
+ 		return(maskmatch(pat,nam));
+ 
+ 	/* get address and covert to numbers to match on */
++#ifdef INET6
++#ifdef linux
++	hp = gethostbyname2(nam, AF_INET);
++#else
++	hp = getipnodebyname(nam, AF_INET, AI_DEFAULT, &h_error);
++#endif
++#else
+ 	hp = gethostbyname(nam);
++#endif
+ 
+ 	/* unknown host can never match numeric spec */
+ 	if(hp == (struct hostent *)0)
+diff -urN fwtk.orig/lib/pname.c fwtk/lib/pname.c
+--- fwtk.orig/lib/pname.c	Sat Jan 18 20:20:57 1997
++++ fwtk/lib/pname.c	Sat Jul 10 23:16:57 1999
+@@ -38,8 +38,16 @@
+ char	*sname;
+ int	z;
+ {
++#ifdef INET6
++	struct	sockaddr_in6	a;
++	struct	in6_addr	*p_addr;
++#ifndef linux
++	int			h_error;
++#endif
++#else
+ 	struct	sockaddr_in	a;
+ 	struct	in_addr		*p_addr;
++#endif
+ 	struct	hostent		*p;
+ 	int			y;
+ 	int			eq = 0;
+@@ -50,8 +58,12 @@
+ 		syslog(LLEV,"getpeername failed: %m");
+ 		return(1);
+ 	}
++#ifdef INET6
++	inet_ntop(AF_INET6, &a.sin6_addr, sname, z);
++#else
+ 	strncpy(sname,inet_ntoa(a.sin_addr),z);
+ 	sname[z - 1] = '\0';
++#endif
+ 
+ #ifdef IP_OPTIONS
+ 	{
+@@ -80,7 +92,16 @@
+ 		}
+ 	}
+ #endif
++#ifdef INET6
++#ifdef linux
++	p = gethostbyaddr((char *)&a.sin6_addr,sizeof(a.sin6_addr),AF_INET6);
++#else
++	p = getipnodebyaddr((char *)&a.sin6_addr,sizeof(a.sin6_addr), AF_INET6,
++			    &h_error);
++#endif
++#else
+ 	p = gethostbyaddr((char *)&a.sin_addr,sizeof(a.sin_addr),AF_INET);
++#endif
+ 	if (p == (struct hostent *)0) {
+ 		syslog(LLEV,"%.512s host address lookup failed",sname);
+ 	} else {
+@@ -89,13 +110,50 @@
+ 		strncpy(lname,p->h_name,z);
+ 		lname[z - 1] = '\0';
+ 
++#ifdef INET6
++#ifdef linux
++		p = gethostbyname2(lname, AF_INET6);
++#else
++		p = getipnodebyname(lname, AF_INET6, AI_DEFAULT | AI_ALL,
++				    &h_error);
++#endif
++#else
+ 		p = gethostbyname(lname);
++#endif
+ 		if(p == (struct hostent *)0) {
+ 			syslog(LLEV,"%.512s/%.20s host name lookup failed",lname,sname);
+ 			goto badguy;
+ 		}
+ 
+ 		tp = p->h_addr_list;
++#ifdef INET6
++		while((p_addr = (struct in6_addr *)*p->h_addr_list++) != (struct in6_addr *)0) {
++			if(p->h_length > sizeof(a.sin6_addr.s6_addr)) {
++				syslog(LLEV,"securityalert: invalid host address length (%d) hostname %.512s",p->h_length, lname);
++				goto badguy;
++			}
++			if(bcmp(p_addr,(char *)&a.sin6_addr,p->h_length) == 0) {
++				eq = 1;
++				break;
++			}
++		}
++		if(!eq) {
++			static char str[512];
++
++			p->h_addr_list = tp;
++			if(p->h_length > sizeof(a.sin6_addr.s6_addr)) {
++				syslog(LLEV,"securityalert: invalid host address length (%d) hostname %.512s",p->h_length, lname);
++				goto badguy;
++			}
++#ifdef SYSV
++			bcopy(p->h_addr_list,&a.sin6_addr,p->h_length);
++#else
++			bcopy(p->h_addr,&a.sin6_addr,p->h_length);
++#endif
++			syslog(LLEV,"securityalert: possible spoof %.512s/%.20s != %.512s name lookup mismatch",lname,sname,inet_ntop(AF_INET6, a.sin6_addr,str,sizeof str));
++			goto badguy;
++		}
++#else
+ 		while((p_addr = (struct in_addr *)*p->h_addr_list++) != (struct in_addr *)0) {
+ 			if(p->h_length > sizeof(a.sin_addr.s_addr)) {
+ 				syslog(LLEV,"securityalert: invalid host address length (%d) hostname %.512s",p->h_length, lname);
+@@ -120,6 +178,7 @@
+ 			syslog(LLEV,"securityalert: possible spoof %.512s/%.20s != %.512s name lookup mismatch",lname,sname,inet_ntoa(a.sin_addr));
+ 			goto badguy;
+ 		}
++#endif
+ 
+ 
+ 		for(x = lname; *x != '\0'; x++)
+diff -urN fwtk.orig/plug-gw/plug-gw.c fwtk/plug-gw/plug-gw.c
+--- fwtk.orig/plug-gw/plug-gw.c	Sun Mar  1 15:39:52 1998
++++ fwtk/plug-gw/plug-gw.c	Sat Jul 10 23:16:57 1999
+@@ -142,6 +142,7 @@
+ 		}
+ 	}
+ 
++	syslog(LLEV,"REJECT");
+ 	if(portid == -1 || av[1] == NULL)
+ 		syslog(LLEV,"deny host=%.512s/%.20s",rhost,raddr);
+ 	else
+@@ -203,6 +204,7 @@
+ 
+ 	struct timeval	timo;
+ 
++	syslog(LLEV,"p=%d,c=%s,ac=%d",p,c,ac);
+ 	if(c->flags & PERM_DENY) {
+ 		if (p == -1)
+ 			syslog(LLEV,"deny host=%.512s/%.20s port=any",rhost,raddr);
+@@ -444,10 +446,23 @@
+ #ifdef	BINDDEBUG
+ debugbind()
+ {
++#ifdef INET6
++	struct	sockaddr_in6	mya;
++#else
+ 	struct	sockaddr_in	mya;
++#endif
+ 	int	x;
+ 	int	nread;
+ 
++#ifdef INET6
++	if((x = socket(AF_INET6,SOCK_STREAM,0)) < 0) {
++		perror("socket");
++		exit(1);
++	}
++	mya.sin6_family = AF_INET6;
++	bzero(&mya.sin6_addr,sizeof(mya.sin6_addr));
++	mya.sin6_port = htons(BINDDEBUGPORT);
++#else
+ 	if((x = socket(AF_INET,SOCK_STREAM,0)) < 0) {
+ 		perror("socket");
+ 		exit(1);
+@@ -455,6 +470,7 @@
+ 	mya.sin_family = AF_INET;
+ 	bzero(&mya.sin_addr,sizeof(mya.sin_addr));
+ 	mya.sin_port = htons(BINDDEBUGPORT);
++#endif
+ 	if(bind(x,(struct sockaddr *)&mya,sizeof(mya))) {
+ 		perror("bind");
+ 		exit(1);
+diff -urN fwtk.orig/rlogin-gw/rlogin-gw.c fwtk/rlogin-gw/rlogin-gw.c
+--- fwtk.orig/rlogin-gw/rlogin-gw.c	Fri Feb  6 01:08:38 1998
++++ fwtk/rlogin-gw/rlogin-gw.c	Sat Jul 10 23:16:57 1999
+@@ -1373,10 +1373,27 @@
+ #ifdef	BINDDEBUG
+ debugbind()
+ {
++#ifdef INET6
++	struct	sockaddr_in6	mya;
++#else
+ 	struct	sockaddr_in	mya;
++#endif
+ 	int	x;
+ 	int	nread;
+ 
++#ifdef INET6
++	if((x = socket(AF_INET6,SOCK_STREAM,0)) < 0) {
++		perror("socket");
++		exit(1);
++	}
++	mya.sin6_family = AF_INET6;
++	bzero(&mya.sin6_addr,sizeof(mya.sin6_addr));
++#ifndef	BINDDEBUGPORT
++	mya.sin6_port = htons(RLOGINPORT);
++#else
++	mya.sin6_port = htons(BINDDEBUGPORT);
++#endif
++#else
+ 	if((x = socket(AF_INET,SOCK_STREAM,0)) < 0) {
+ 		perror("socket");
+ 		exit(1);
+@@ -1387,6 +1404,7 @@
+ 	mya.sin_port = htons(RLOGINPORT);
+ #else
+ 	mya.sin_port = htons(BINDDEBUGPORT);
++#endif
+ #endif
+ 	if(bind(x,(struct sockaddr *)&mya,sizeof(mya))) {
+ 		perror("bind");
+diff -urN fwtk.orig/smap/smap.c fwtk/smap/smap.c
+--- fwtk.orig/smap/smap.c	Sat Jul 10 23:15:57 1999
++++ fwtk/smap/smap.c	Sat Jul 10 23:16:57 1999
+@@ -122,13 +122,24 @@
+ 
+ 	if (ac > 1 && !strcmp(av[1], "-daemon")) {
+ 		int sock, sockl;
++#ifdef INET6
++		struct sockaddr_in6 sa;
++#else
+ 		struct sockaddr_in sa;
++#endif
+ 		int pid;
+ 	
++#ifdef INET6
++		sa.sin6_family = AF_INET6;
++		bzero((char *)&sa.sin6_addr, sizeof(sa.sin6_addr));
++		sa.sin6_port = htons(25);
++		sock = socket(AF_INET6, SOCK_STREAM, 0);
++#else
+ 		sa.sin_family = AF_INET;
+ 		bzero((char *)&sa.sin_addr, sizeof(sa.sin_addr));
+ 		sa.sin_port = htons(25);
+ 		sock = socket(AF_INET, SOCK_STREAM, 0);
++#endif
+ 		if (sock < 0) {
+ 			syslog(LLEV, "fwtksyserr: Failed to create socket: %m");
+ 			exit(1);
+diff -urN fwtk.orig/tn-gw/tn-gw.c fwtk/tn-gw/tn-gw.c
+--- fwtk.orig/tn-gw/tn-gw.c	Fri Feb  6 01:11:36 1998
++++ fwtk/tn-gw/tn-gw.c	Sat Jul 10 23:16:57 1999
+@@ -877,6 +877,7 @@
+ 	static  char	buf[1024];
+ 	char		*namp;
+ 
++
+ 	if(ac < 2)
+ 		return(sayn(0,narg,sizeof(narg)-1));
+ 
+@@ -1762,10 +1763,27 @@
+ #ifdef	BINDDEBUG
+ debugbind()
+ {
++#ifdef INET6
++	struct	sockaddr_in6	mya;
++#else
+ 	struct	sockaddr_in	mya;
++#endif
+ 	int	x;
+ 	int	nread;
+ 
++#ifdef INET6
++	if((x = socket(AF_INET6,SOCK_STREAM,0)) < 0) {
++		perror("socket");
++		exit(1);
++	}
++	mya.sin6_family = AF_INET6;
++	bzero(&mya.sin6_addr,sizeof(mya.sin6_addr));
++#ifndef	BINDDEBUGPORT
++	mya.sin6_port = htons(TNPORT);
++#else
++	mya.sin6_port = htons(BINDDEBUGPORT);
++#endif
++#else
+ 	if((x = socket(AF_INET,SOCK_STREAM,0)) < 0) {
+ 		perror("socket");
+ 		exit(1);
+@@ -1776,6 +1794,7 @@
+ 	mya.sin_port = htons(TNPORT);
+ #else
+ 	mya.sin_port = htons(BINDDEBUGPORT);
++#endif
+ #endif
+ 	if(bind(x,(struct sockaddr *)&mya,sizeof(mya))) {
+ 		perror("bind");

@@ -1,0 +1,86 @@
+diff -urN fwtk.orig/ftp-gw/ftp-gw.c fwtk/ftp-gw/ftp-gw.c
+--- fwtk.orig/ftp-gw/ftp-gw.c	Fri Jul  9 12:43:53 1999
++++ fwtk/ftp-gw/ftp-gw.c	Fri Jul  9 12:44:02 1999
+@@ -1746,8 +1746,8 @@
+ 			}
+ 
+ 			if(extendperm && (op->flg & OP_XTND)) {			
+-				msg_int = auth_perm(confp,authuser,"ftp-gw",riaddr,tokav[0]);
+-				if(msg_int == 1 || msg_int == 0) {
++			        msg_int = auth_perm(confp,authuser,"ftp-gw",riaddr,tokav);
++				if(msg_int == 1 || msg_int == -1) {
+ 					sprintf(mbuf,"Permission denied for operation");
+ 					syslog(LLEV,"deny host=%.512s/%.20s operation %.100s - extended permissions",rladdr,riaddr,buf);
+ 					say(0,mbuf);
+diff -urN fwtk.orig/http-gw/http-gw.c fwtk/http-gw/http-gw.c
+--- fwtk.orig/http-gw/http-gw.c	Fri Jul  9 12:43:54 1999
++++ fwtk/http-gw/http-gw.c	Fri Jul  9 12:44:02 1999
+@@ -2320,6 +2320,14 @@
+ 				    seek_and_destroy(value);
+ 
+ 			/* Quote at end removed to avoid double write*/
++			if (*value == '"' || *value == '\'') {
++			   /* leave single quote intact */
++			   if (strlen(value) > 1) {
++			      char *p2 = value + strlen(value) - 1;
++			      if (*value == *p2) *p2 = 0;
++			   }
++			}
++
+ 			p = value + strlen(value) - 1;
+ 			if ((*p == '"') || (*p == '\'')) *p = 0;
+ 
+diff -urN fwtk.orig/smap/smap.c fwtk/smap/smap.c
+--- fwtk.orig/smap/smap.c	Fri Jul  9 12:43:53 1999
++++ fwtk/smap/smap.c	Fri Jul  9 12:44:02 1999
+@@ -369,6 +369,11 @@
+ 			q += 3;
+ 			while(isspace(*q))
+ 				q++;
++                        if(q == (char *)0) {
++                                printf("501 Syntax error\r\n");
++                                fflush(stdout);
++                                continue;
++                        }
+ #ifdef	SPECIALDOMAIN
+ 			if(!checkvalid(q)) {
+ 				syslog(LLEV,"securityalert: rejecting recip %.512s",q);
+diff -urN fwtk.orig/smapd/smapd.c fwtk/smapd/smapd.c
+--- fwtk.orig/smapd/smapd.c	Fri Jul  9 12:43:53 1999
++++ fwtk/smapd/smapd.c	Fri Jul  9 12:44:02 1999
+@@ -493,7 +493,7 @@
+ 
+ 		i = 0;
+ 		faka[i++] = smailprog;
+-		faka[i++] = "-f";
++		faka[i++] = "-if";
+ 		faka[i++] = fromaddr;
+ 
+ 		while(nrec != (struct towho *)0) {
+diff -urN fwtk.orig/x-gw/sig.c fwtk/x-gw/sig.c
+--- fwtk.orig/x-gw/sig.c	Fri Jul  9 12:43:54 1999
++++ fwtk/x-gw/sig.c	Fri Jul  9 12:44:02 1999
+@@ -83,13 +83,21 @@
+ {
+ 	int	ret;
+ 	list_t	*p=pidlist;
++	list_t  *ptemp;   /* Define a temporary pointer to list_t */
+ 
+ 	while(p) { 
+ 		if( (ret=handle_sigpid(p->id))>= -1 && cb) 
+ 			ret=cb(p->id,data,ret);
+-		if( ret>= -1) 
++		if( ret>= -1) {
++			/*  Assign the next pid to ptemp even if it's NULL   */
++			ptemp=p->next;
++			/*  Now we can call deleteListItem and free memory for p  */
+ 			pidlist=(list_t*)deleteListItem(pidlist,p->id);
+-	p=p->next;
++			/*  Now we put the next pid value into memory location p */
++			p=ptemp;
++		} else { /* If child pid still active and has not died then do this */
++			p=p->next;
++		}
+ 	} 
+ 	return pidlist;
+ }

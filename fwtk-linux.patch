@@ -1,0 +1,67 @@
+diff -urN fwtk.orig/Makefile.config.linux fwtk/Makefile.config.linux
+--- fwtk.orig/Makefile.config.linux	Fri Jul  9 11:44:25 1999
++++ fwtk/Makefile.config.linux	Fri Jul  9 11:53:10 1999
+@@ -30,7 +30,7 @@
+ # Options for your compiler (eg, "-g" for debugging, "-O" for
+ # optimizing, or "-g -O" for both under GCC)
+ #COPT=	-g -traditional $(DEFINES)
+-COPT=	-g $(DEFINES)
++COPT=	-g $(DEFINES) $(RPM_OPT)
+ #COPT=	-O $(DEFINES)
+ 
+ # Version of "make" you want to use
+@@ -44,11 +44,11 @@
+ 
+ 
+ # Destination directory for installation of binaries
+-DEST=	/usr/local/etc
++DEST=	/usr/sbin
+ 
+ 
+ # Destination directory for installation of man pages
+-#DESTMAN=	$(DEST)/../man
++DESTMAN=	/usr/share/man
+ 
+ 
+ # Names of any auxiliary libraries your system may require (e.g., -lsocket)
+@@ -57,7 +57,7 @@
+ #AUXLIB= -lsocket
+ # Some versions of Linux have broken the crypt() function out into a
+ # separate library - uncomment the following line if authsrv fails to build.
+-#AUXLIB= -lcrypt
++AUXLIB= -lcrypt
+ 
+ # For Solaris:
+ #AUXLIB= -lresolv -lsocket -lnsl
+@@ -85,12 +85,12 @@
+ 
+ 
+ # Location of the fwtk sources [For #include by any external tools needing it]
+-FWTKSRCDIR=/u/b/mjr/firewall/fwtk
++#FWTKSRCDIR=/u/b/mjr/firewall/fwtk
+ #FWTKSRCDIR=/usr/local/src/fwtk
+ 
+ 
+ # Location of X libraries for X-gw
+-XLIBDIR=/usr/X11/lib
++XLIBDIR=/usr/X11R6/lib
+ #XLIBDIR=/usr/local/X11R5/lib
+ 
+ # X Libraries
+@@ -98,14 +98,14 @@
+ #XLIBS= -L$(XLIBDIR) -lXaw -lXmu -lXt -lXext -lX11 -lSM -lICE -lipc
+ #XLIBS =  -L$(XLIBDIR) -lXaw -lXmu -lXt -lXext -lX11
+ # for Linux:
+-XLIBS =  -L$(XLIBDIR) -lXaw -lXmu -lXt -lXext -lX11 -lc
++XLIBS =  -L$(XLIBDIR) -lXaw -lXmu -lXt -lXext -lX11 -lc -lSM -lICE
+ # for BSD/OS 2.0:
+ #XLIBS = -L$(XLIBDIR) -lXaw -lXmu -lXt -lXext -lX11 -lSM -lICE -lXext
+ # For SunOS:
+ #XLIBS = -L$(XLIBDIR) -lXaw -lXmu -lXt -lXext -lX11
+ 
+ # Location of X include files
+-XINCLUDE=/usr/X11/include
++XINCLUDE=/usr/X11R6/include
+ #XINCLUDE=/usr/local/X11R5/include
+ 
+ # Objects to include in libfwall for SYSV

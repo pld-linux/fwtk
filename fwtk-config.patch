@@ -1,0 +1,30 @@
+diff -urN fwtk.orig/firewall.h fwtk/firewall.h
+--- fwtk.orig/firewall.h	Sun Mar  1 15:54:20 1998
++++ fwtk/firewall.h	Fri Jul  9 13:36:14 1999
+@@ -47,7 +47,7 @@
+ system.
+ */
+ #ifndef	PERMFILE
+-#define	PERMFILE	"/usr/local/etc/netperm-table"
++#define	PERMFILE	"/etc/fwtk/netperm-table"
+ #endif
+ 
+ /*
+@@ -89,7 +89,7 @@
+ makes no difference. make sure that whichever your machine uses
+ is defined below.
+ */
+-#if defined(SYSV) || defined(SCO5) || defined(OSF1) || defined(AIX)
++#if defined(SYSV) || defined(SCO5) || defined(OSF1) || defined(AIX) || defined(linux)
+ #define DIRECT_STRUCT   struct dirent 
+ #else
+ #define DIRECT_STRUCT   struct direct
+@@ -102,7 +102,7 @@
+ enables lockf() style locking.
+ The locking primitives are implemented in lib/lock.c
+ */
+-#if defined(SYSV) || defined (HPUX) || defined(SCO5) || defined(AIX)
++#if defined(SYSV) || defined (HPUX) || defined(SCO5) || defined(AIX) || defined(linux)
+ #define LOCK_LOCKF
+ #else
+ #define	LOCK_FLOCK
