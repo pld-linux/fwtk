@@ -57,14 +57,13 @@ install %{SOURCE2} $RPM_BUILD_ROOT%{_sbindir}
 gunzip $RPM_BUILD_ROOT%{_sbindir}/*.gz
 
 rm -f config/Makefile
-gzip -9nf CHANGES LICENSE README fwtk/doc/*.* config/*
 
 %clean
 rm -rf $RPM_BUILD_ROOT
 
 %files
 %defattr(644,root,root,755)
-%attr(644,root,root) %doc {CHANGES,LICENSE,README}.gz fwtk/doc/*.* config/*
+%doc CHANGES LICENSE README fwtk/doc/*.* config/*
 %attr(755,root,root) %{_sbindir}/*
-%attr(644,root,root) %{_mandir}/man[358]/*
+%{_mandir}/man[358]/*
 %config(noreplace) %verify(not size mtime md5) %{_sysconfdir}/*
