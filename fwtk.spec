@@ -5,8 +5,6 @@ Version:	2.1
 Release:	1
 License:	see LICENSE file (redistribution restricted)
 Group:		Networking/Daemons
-Group(de):	Netzwerkwesen/Server
-Group(pl):	Sieciowe/Serwery
 # How to get sources - see http://www.fwtk.org/ and http://www.tis.com/
 Source0:	%{name}%{version}.tar.Z
 Source1:	%{name}-doc-only.tar.Z
