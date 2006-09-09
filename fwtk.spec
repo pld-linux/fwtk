@@ -67,4 +67,5 @@ rm -rf $RPM_BUILD_ROOT
 %doc CHANGES LICENSE README fwtk/doc/*.* config/*
 %attr(755,root,root) %{_sbindir}/*
 %{_mandir}/man[358]/*
+%dir %{_sysconfdir}
 %config(noreplace) %verify(not md5 mtime size) %{_sysconfdir}/*
