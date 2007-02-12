@@ -1,5 +1,5 @@
 Summary:	TIS FireWall ToolKit
-Summary(pl):	TIS FireWall ToolKit
+Summary(pl.UTF-8):   TIS FireWall ToolKit
 Name:		fwtk
 Version:	2.1
 Release:	1
@@ -24,8 +24,8 @@ BuildRoot:	%{tmpdir}/%{name}-%{version}-root-%(id -u -n)
 %description
 Firewall Toolkit.
 
-%description -l pl
-Firewall Toolkit - narzêdzie do tworzenia firewalli.
+%description -l pl.UTF-8
+Firewall Toolkit - narzÄ™dzie do tworzenia firewalli.
 
 %prep
 %setup -q -n %{name}
