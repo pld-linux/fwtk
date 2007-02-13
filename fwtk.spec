@@ -1,5 +1,5 @@
 Summary:	TIS FireWall ToolKit
-Summary(pl.UTF-8):   TIS FireWall ToolKit
+Summary(pl.UTF-8):	TIS FireWall ToolKit
 Name:		fwtk
 Version:	2.1
 Release:	1
